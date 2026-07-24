@@ -17,38 +17,47 @@ SERVICE_ACCOUNT_FILE = 'service_account.json'
 def get_credentials():
     """
     Obtiene las credenciales de Google Sheets.
-    Primero intenta desde archivo, luego desde variable de entorno.
+    Prioridad: 1. Variable de entorno (Render) -> 2. Archivo local
     """
     try:
-        # 1. Intentar desde archivo (desarrollo local)
-        if os.path.exists(SERVICE_ACCOUNT_FILE):
-            with open(SERVICE_ACCOUNT_FILE, 'r') as f:
-                creds_dict = json.load(f)
-                return creds_dict
-        
-        # 2. Intentar desde variable de entorno (Render)
+        # 1. INTENTAR DESDE VARIABLE DE ENTORNO (RENDER)
         env_creds = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         if env_creds:
-            # Si la variable es un JSON string, parsearlo
             try:
+                # Intentar parsear como JSON
                 creds_dict = json.loads(env_creds)
+                st.success("✅ Credenciales cargadas desde variable de entorno")
                 return creds_dict
             except json.JSONDecodeError:
-                # Si es una ruta a un archivo
+                # Si falla, podría ser una ruta a un archivo
                 if os.path.exists(env_creds):
                     with open(env_creds, 'r') as f:
+                        st.success("✅ Credenciales cargadas desde archivo")
                         return json.load(f)
+                else:
+                    st.error("❌ La variable GOOGLE_APPLICATION_CREDENTIALS no es un JSON válido")
+                    return None
         
-        # 3. Si no hay credenciales, mostrar error
+        # 2. INTENTAR DESDE ARCHIVO LOCAL (DESARROLLO)
+        if os.path.exists(SERVICE_ACCOUNT_FILE):
+            with open(SERVICE_ACCOUNT_FILE, 'r') as f:
+                st.success("✅ Credenciales cargadas desde archivo local")
+                return json.load(f)
+        
+        # 3. SI NO HAY CREDENCIALES
         st.error("❌ No se encontraron credenciales de Google Sheets")
         st.info("""
         📌 **Configuración necesaria:**
         
-        **En desarrollo local:**
-        - Colocar `service_account.json` en la raíz del proyecto
-        
         **En Render:**
-        - Agregar Secret `GOOGLE_APPLICATION_CREDENTIALS` con el contenido del JSON
+        1. Ir a tu servicio → Environment → Secrets
+        2. Agregar Secret con:
+           - Key: `GOOGLE_APPLICATION_CREDENTIALS`
+           - Value: Copiar TODO el contenido de `service_account.json`
+        
+        **En desarrollo local:**
+        1. Colocar `service_account.json` en la raíz del proyecto
+        2. El archivo debe tener el formato JSON de Google Cloud
         """)
         return None
         
@@ -62,41 +71,52 @@ def get_sheets_client():
     try:
         creds_dict = get_credentials()
         if creds_dict is None:
+            st.error("❌ No se pudieron obtener las credenciales")
             return None
         
-        # Crear credenciales desde el diccionario
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         
-        # Método alternativo: crear credenciales desde el diccionario
-        from oauth2client.client import GoogleCredentials
-        creds = GoogleCredentials(
-            access_token=None,
-            client_id=creds_dict.get('client_id'),
-            client_secret=creds_dict.get('client_secret'),
-            refresh_token=None,
-            token_expiry=None,
-            token_uri=creds_dict.get('token_uri'),
-            user_agent=None,
-            revoke_uri=None
-        )
-        
-        # Si el método anterior falla, usar ServiceAccountCredentials
-        if creds is None or not creds.client_id:
-            # Crear credenciales desde el archivo temporal si es necesario
-            if os.path.exists(SERVICE_ACCOUNT_FILE):
-                creds = ServiceAccountCredentials.from_json_keyfile_name(
-                    SERVICE_ACCOUNT_FILE, scope
-                )
-            else:
-                # Crear archivo temporal en Render
+        # Crear credenciales desde el diccionario
+        try:
+            # Método 1: Crear credenciales directamente desde el diccionario
+            from oauth2client.client import GoogleCredentials
+            creds = GoogleCredentials(
+                access_token=None,
+                client_id=creds_dict.get('client_id'),
+                client_secret=creds_dict.get('client_secret'),
+                refresh_token=None,
+                token_expiry=None,
+                token_uri=creds_dict.get('token_uri'),
+                user_agent=None,
+                revoke_uri=None
+            )
+            
+            # Si las credenciales no son válidas, intentar con ServiceAccountCredentials
+            if not creds or not creds.client_id:
+                # Crear un archivo temporal con el JSON
                 import tempfile
                 temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
                 json.dump(creds_dict, temp_file)
                 temp_file.close()
+                
                 creds = ServiceAccountCredentials.from_json_keyfile_name(
                     temp_file.name, scope
                 )
+                # Limpiar archivo temporal
                 os.unlink(temp_file.name)
+                
+        except Exception as e:
+            # Método alternativo: usar ServiceAccountCredentials con archivo temporal
+            import tempfile
+            temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+            json.dump(creds_dict, temp_file)
+            temp_file.close()
+            
+            creds = ServiceAccountCredentials.from_json_keyfile_name(
+                temp_file.name, scope
+            )
+            # Limpiar archivo temporal
+            os.unlink(temp_file.name)
         
         client = gspread.authorize(creds)
         return client
