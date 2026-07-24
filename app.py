@@ -9,6 +9,10 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- NUEVA LÍNEA: FORZAR DASHBOARD AL INICIAR ---
+if "pagina" not in st.session_state:
+    st.session_state.pagina = "📊 Panel de control"
+
 # --- CSS CON PALETA CORPORATIVA ---
 st.markdown(f"""
 <style>
@@ -223,7 +227,7 @@ with st.sidebar:
     
     # NAVEGACIÓN
     if "pagina" not in st.session_state:
-        st.session_state.pagina = "Panel de control"
+        st.session_state.pagina = "📊 Panel de control"
     
     opciones = [
         "📊 Panel de control",
