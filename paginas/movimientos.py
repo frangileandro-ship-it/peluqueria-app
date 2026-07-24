@@ -189,7 +189,7 @@ def show(datos):
     # --- 3. TABLA ---
     if not df_filtrado.empty:
         total_filtrado = df_filtrado['Importe'].sum()
-        st.info(f"📊 Mostrando {len(df_filtrado)} movimientos - Total: ${total_filtrado:,.2f}")
+        st.info(f"📊 Mostrando {len(df_filtrado)} movimientos")
         
         df_filtrado = df_filtrado.sort_values('Fecha', ascending=False)
         
