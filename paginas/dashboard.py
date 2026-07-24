@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, timedelta
+from datetime import datetime
 import calendar
 
 def show(datos):
@@ -16,90 +16,55 @@ def show(datos):
     
     # --- CORRECCIÓN DE FECHAS: Convertir y limpiar ---
     movimientos['Fecha'] = pd.to_datetime(movimientos['Fecha'], errors='coerce')
-    # Eliminar filas con fecha nula
     movimientos = movimientos.dropna(subset=['Fecha'])
     
     if movimientos.empty:
         st.warning("⚠️ No hay fechas válidas en los datos")
         return
     
-    # --- FILTRO DE PERÍODO (SOLAPAS) ---
-    st.subheader("📅 Período de análisis")
-    col_periodo1, col_periodo2 = st.columns([1, 3])
+    # --- FILTRO DE MES ---
+    st.subheader("📅 Seleccionar mes")
     
-    with col_periodo1:
-        periodo = st.radio(
-            "Ver:",
-            ["📆 Mensual", "📅 Anual"],
-            index=0,
-            horizontal=True
-        )
+    fechas_validas = movimientos['Fecha'].dropna()
     
-    with col_periodo2:
-        # Obtener fechas únicas para filtros (SOLO FECHAS VÁLIDAS)
-        fechas_validas = movimientos['Fecha'].dropna()
-        
-        if fechas_validas.empty:
-            st.warning("⚠️ No hay fechas válidas en los datos")
-            datos_filtrados = movimientos
-        else:
-            if periodo == "📆 Mensual":
-                # Obtener meses REALES con datos
-                meses_con_datos = fechas_validas.dt.strftime('%Y-%m').unique().tolist()
-                meses_con_datos = sorted(meses_con_datos)
-                
-                if meses_con_datos:
-                    mes_actual = datetime.now().strftime('%Y-%m')
-                    
-                    if mes_actual not in meses_con_datos:
-                        mes_actual = meses_con_datos[-1]
-                    
-                    mes_seleccionado = st.selectbox(
-                        "Seleccionar mes:",
-                        meses_con_datos,
-                        index=meses_con_datos.index(mes_actual) if mes_actual in meses_con_datos else 0
-                    )
-                    
-                    año_mes = mes_seleccionado.split('-')
-                    año = int(año_mes[0])
-                    mes = int(año_mes[1])
-                    
-                    datos_filtrados = movimientos[
-                        (movimientos['Fecha'].dt.year == año) &
-                        (movimientos['Fecha'].dt.month == mes)
-                    ]
-                    
-                    nombre_mes = calendar.month_name[mes]
-                    st.caption(f"📌 Mostrando datos de {nombre_mes} {año}")
-                else:
-                    st.warning("No hay datos de fechas disponibles")
-                    datos_filtrados = movimientos
-            else:  # Anual
-                años_con_datos = sorted(fechas_validas.dt.year.unique().tolist())
-                
-                if años_con_datos:
-                    año_actual = datetime.now().year
-                    
-                    if año_actual not in años_con_datos:
-                        año_actual = años_con_datos[-1]
-                    
-                    año_seleccionado = st.selectbox(
-                        "Seleccionar año:",
-                        años_con_datos,
-                        index=años_con_datos.index(año_actual) if año_actual in años_con_datos else 0
-                    )
-                    
-                    datos_filtrados = movimientos[
-                        movimientos['Fecha'].dt.year == año_seleccionado
-                    ]
-                    st.caption(f"📌 Mostrando datos de {año_seleccionado}")
-                else:
-                    st.warning("No hay datos de años disponibles")
-                    datos_filtrados = movimientos
+    if fechas_validas.empty:
+        st.warning("⚠️ No hay fechas válidas en los datos")
+        return
+    
+    # Obtener meses con datos
+    meses_con_datos = sorted(fechas_validas.dt.strftime('%Y-%m').unique().tolist())
+    
+    if not meses_con_datos:
+        st.warning("No hay datos de fechas disponibles")
+        return
+    
+    # Seleccionar mes (por defecto el último con datos)
+    mes_actual = datetime.now().strftime('%Y-%m')
+    if mes_actual not in meses_con_datos:
+        mes_actual = meses_con_datos[-1]
+    
+    mes_seleccionado = st.selectbox(
+        "Seleccionar mes:",
+        meses_con_datos,
+        index=meses_con_datos.index(mes_actual) if mes_actual in meses_con_datos else 0
+    )
+    
+    año_mes = mes_seleccionado.split('-')
+    año_seleccionado = int(año_mes[0])
+    mes_seleccionado_int = int(año_mes[1])
+    
+    # --- FILTRAR DATOS DEL MES ---
+    datos_filtrados = movimientos[
+        (movimientos['Fecha'].dt.year == año_seleccionado) &
+        (movimientos['Fecha'].dt.month == mes_seleccionado_int)
+    ]
+    
+    nombre_mes = calendar.month_name[mes_seleccionado_int]
+    st.caption(f"📌 Mostrando datos de {nombre_mes} {año_seleccionado}")
     
     st.markdown("---")
     
-    # --- MÉTRICAS PRINCIPALES (SIN MOVIMIENTOS) ---
+    # --- MÉTRICAS PRINCIPALES ---
     ingresos = datos_filtrados[datos_filtrados['Ingreso/Gasto'] == 'Ingreso']['Importe'].sum()
     gastos = datos_filtrados[datos_filtrados['Ingreso/Gasto'] == 'Gasto']['Importe'].sum()
     ganancia = ingresos - gastos
@@ -111,13 +76,11 @@ def show(datos):
             label="💰 Ingresos",
             value=f"${ingresos:,.2f}"
         )
-    
     with col2:
         st.metric(
             label="💸 Gastos", 
             value=f"${gastos:,.2f}"
         )
-    
     with col3:
         st.metric(
             label="📈 Ganancia",
@@ -127,15 +90,13 @@ def show(datos):
     
     st.markdown("---")
     
-    # --- MÉTRICAS POR MEDIO DE PAGO (VERSIÓN 2 COLUMNAS) ---
+    # --- MÉTRICAS POR MEDIO DE PAGO ---
     st.subheader("💳 Resumen por Medio de Pago")
     
-    # Verificar que exista la columna
     if 'Medio de Pago' not in datos_filtrados.columns:
         st.info("No se encuentra la columna 'Medio de Pago'")
     else:
-        # --- OBTENER DATOS POR MEDIO DE PAGO ---
-        # Ingresos por medio
+        # --- DATOS DEL MES FILTRADO ---
         ingresos_efectivo = datos_filtrados[
             (datos_filtrados['Ingreso/Gasto'] == 'Ingreso') &
             (datos_filtrados['Medio de Pago'].str.upper().str.contains('EFECTIVO', na=False))
@@ -146,7 +107,6 @@ def show(datos):
             (datos_filtrados['Medio de Pago'].str.upper().str.contains('MERCADO|MP|MERCADOPAGO', na=False))
         ]['Importe'].sum()
         
-        # Egresos por medio
         egresos_efectivo = datos_filtrados[
             (datos_filtrados['Ingreso/Gasto'] == 'Gasto') &
             (datos_filtrados['Medio de Pago'].str.upper().str.contains('EFECTIVO', na=False))
@@ -157,66 +117,77 @@ def show(datos):
             (datos_filtrados['Medio de Pago'].str.upper().str.contains('MERCADO|MP|MERCADOPAGO', na=False))
         ]['Importe'].sum()
         
-        # --- SALDOS INICIALES DESDE HOJA "CAJA" (SOLO PARA ANUAL) ---
-        saldo_inicial_efectivo = 0.0
-        saldo_inicial_mp = 0.0
-        mostrar_saldo_inicial = False
-        
-        # Solo si el período es Anual, buscar saldo inicial
-        if periodo == "📅 Anual":
-            caja = datos.get('caja', pd.DataFrame())
-            
-            if not caja.empty:
-                # Asegurar que la columna Fecha sea datetime
-                if 'Fecha' in caja.columns:
-                    caja['Fecha'] = pd.to_datetime(caja['Fecha'], errors='coerce')
-                
-                # Buscar registros de tipo "Saldo Inicial"
-                caja_saldos = caja[caja['Tipo'] == 'Saldo Inicial']
-                
-                if not caja_saldos.empty:
-                    # Ordenar por fecha (más reciente primero) y tomar el primero
-                    caja_saldos = caja_saldos.sort_values('Fecha', ascending=False)
-                    ultimo_saldo = caja_saldos.iloc[0]
-                    
-                    # Extraer valores (con manejo de errores)
-                    try:
-                        saldo_inicial_efectivo = float(ultimo_saldo.get('Efectivo', 0.0) or 0.0)
-                    except:
-                        saldo_inicial_efectivo = 0.0
-                        
-                    try:
-                        saldo_inicial_mp = float(ultimo_saldo.get('MercadoPago', 0.0) or 0.0)
-                    except:
-                        saldo_inicial_mp = 0.0
-                    
-                    mostrar_saldo_inicial = True
-                    
-                    # Mostrar qué saldo se está usando
-                    fecha_saldo = ultimo_saldo.get('Fecha', '')
-                    if isinstance(fecha_saldo, pd.Timestamp):
-                        fecha_saldo = fecha_saldo.strftime('%d/%m/%Y')
-                    st.caption(f"📌 Saldo inicial cargado desde Caja: {fecha_saldo}")
-                else:
-                    st.info("💡 Cargá un 'Saldo Inicial' en la sección Caja para ver el acumulado anual.")
-            else:
-                st.info("💡 No hay datos en la hoja 'Caja'. Cargá un 'Saldo Inicial' para ver el acumulado anual.")
-        
-        # --- CALCULAR TOTALES ---
         total_efectivo = ingresos_efectivo - egresos_efectivo
         total_mp = ingresos_mp - egresos_mp
         
-        # --- CORRECCIÓN: Acumulado SOLO en modo Anual ---
-        if periodo == "📅 Anual" and mostrar_saldo_inicial:
-            acumulado_efectivo = total_efectivo + saldo_inicial_efectivo
-            acumulado_mp = total_mp + saldo_inicial_mp
-            etiqueta_acumulado = "📈 Acumulado Anual"
-            mostrar_saldo = True
+        # --- ACUMULADO YTD (desde enero hasta el mes seleccionado) ---
+        datos_ytd = movimientos[
+            (movimientos['Fecha'].dt.year == año_seleccionado) &
+            (movimientos['Fecha'].dt.month <= mes_seleccionado_int)
+        ]
+        
+        ingresos_efectivo_ytd = datos_ytd[
+            (datos_ytd['Ingreso/Gasto'] == 'Ingreso') &
+            (datos_ytd['Medio de Pago'].str.upper().str.contains('EFECTIVO', na=False))
+        ]['Importe'].sum()
+        
+        ingresos_mp_ytd = datos_ytd[
+            (datos_ytd['Ingreso/Gasto'] == 'Ingreso') &
+            (datos_ytd['Medio de Pago'].str.upper().str.contains('MERCADO|MP|MERCADOPAGO', na=False))
+        ]['Importe'].sum()
+        
+        egresos_efectivo_ytd = datos_ytd[
+            (datos_ytd['Ingreso/Gasto'] == 'Gasto') &
+            (datos_ytd['Medio de Pago'].str.upper().str.contains('EFECTIVO', na=False))
+        ]['Importe'].sum()
+        
+        egresos_mp_ytd = datos_ytd[
+            (datos_ytd['Ingreso/Gasto'] == 'Gasto') &
+            (datos_ytd['Medio de Pago'].str.upper().str.contains('MERCADO|MP|MERCADOPAGO', na=False))
+        ]['Importe'].sum()
+        
+        total_efectivo_ytd = ingresos_efectivo_ytd - egresos_efectivo_ytd
+        total_mp_ytd = ingresos_mp_ytd - egresos_mp_ytd
+        
+        # --- OBTENER SALDO INICIAL (desde Caja) ---
+        caja = datos.get('caja', pd.DataFrame())
+        saldo_inicial_efectivo = 0.0
+        saldo_inicial_mp = 0.0
+        fecha_saldo = None
+        
+        if not caja.empty:
+            if 'Fecha' in caja.columns:
+                caja['Fecha'] = pd.to_datetime(caja['Fecha'], errors='coerce')
+            caja_saldos = caja[caja['Tipo'] == 'Saldo Inicial']
+            
+            if not caja_saldos.empty:
+                caja_saldos = caja_saldos.sort_values('Fecha', ascending=False)
+                ultimo_saldo = caja_saldos.iloc[0]
+                
+                try:
+                    saldo_inicial_efectivo = float(ultimo_saldo.get('Efectivo', 0.0) or 0.0)
+                except:
+                    saldo_inicial_efectivo = 0.0
+                try:
+                    saldo_inicial_mp = float(ultimo_saldo.get('MercadoPago', 0.0) or 0.0)
+                except:
+                    saldo_inicial_mp = 0.0
+                
+                fecha_saldo = ultimo_saldo.get('Fecha', '')
+                if isinstance(fecha_saldo, pd.Timestamp):
+                    fecha_saldo = fecha_saldo.strftime('%d/%m/%Y')
+        
+        # --- ACUMULADO FINAL CON SALDO INICIAL ---
+        acumulado_efectivo = total_efectivo_ytd + saldo_inicial_efectivo
+        acumulado_mp = total_mp_ytd + saldo_inicial_mp
+        
+        # Mostrar información del saldo inicial
+        if saldo_inicial_efectivo > 0 or saldo_inicial_mp > 0:
+            st.caption(f"📌 Saldo inicial cargado desde Caja: {fecha_saldo if fecha_saldo else 'No disponible'}")
+        elif not caja.empty and caja_saldos.empty:
+            st.info("💡 Cargá un 'Saldo Inicial' en la sección Caja para ver el acumulado anual.")
         else:
-            acumulado_efectivo = total_efectivo
-            acumulado_mp = total_mp
-            etiqueta_acumulado = ""
-            mostrar_saldo = False
+            st.info("💡 No hay datos en la hoja 'Caja'. Cargá un 'Saldo Inicial' para ver el acumulado anual.")
         
         # --- MOSTRAR EN 2 COLUMNAS ---
         col_efectivo, col_mp = st.columns(2)
@@ -233,7 +204,6 @@ def show(datos):
             </div>
             """, unsafe_allow_html=True)
             
-            # Métricas de Efectivo (SIN DELTAS)
             st.metric(
                 label="💰 Ingresos Efectivo",
                 value=f"${ingresos_efectivo:,.2f}"
@@ -243,21 +213,15 @@ def show(datos):
                 value=f"${egresos_efectivo:,.2f}"
             )
             st.metric(
-                label="📊 Total Efectivo",
+                label="📊 Total del mes",
                 value=f"${total_efectivo:,.2f}",
                 delta=None
             )
-            
-            # Mostrar saldo inicial y acumulado SOLO en modo Anual
-            if mostrar_saldo:
-                if saldo_inicial_efectivo > 0:
-                    st.caption(f"📌 Saldo inicial: ${saldo_inicial_efectivo:,.2f}")
-                
-                st.metric(
-                    label=etiqueta_acumulado,
-                    value=f"${acumulado_efectivo:,.2f}",
-                    delta=None
-                )
+            st.metric(
+                label=f"📈 Acumulado hasta {nombre_mes}",
+                value=f"${acumulado_efectivo:,.2f}",
+                delta=None
+            )
         
         with col_mp:
             st.markdown("""
@@ -271,7 +235,6 @@ def show(datos):
             </div>
             """, unsafe_allow_html=True)
             
-            # Métricas de Mercado Pago (SIN DELTAS)
             st.metric(
                 label="💰 Ingresos MP",
                 value=f"${ingresos_mp:,.2f}"
@@ -281,21 +244,15 @@ def show(datos):
                 value=f"${egresos_mp:,.2f}"
             )
             st.metric(
-                label="📊 Total MP",
+                label="📊 Total del mes",
                 value=f"${total_mp:,.2f}",
                 delta=None
             )
-            
-            # Mostrar saldo inicial y acumulado SOLO en modo Anual
-            if mostrar_saldo:
-                if saldo_inicial_mp > 0:
-                    st.caption(f"📌 Saldo inicial: ${saldo_inicial_mp:,.2f}")
-                
-                st.metric(
-                    label=etiqueta_acumulado,
-                    value=f"${acumulado_mp:,.2f}",
-                    delta=None
-                )
+            st.metric(
+                label=f"📈 Acumulado hasta {nombre_mes}",
+                value=f"${acumulado_mp:,.2f}",
+                delta=None
+            )
     
     st.markdown("---")
     
@@ -355,7 +312,6 @@ def show(datos):
     # --- TOP CATEGORÍAS CON SEPARADOR VERTICAL ---
     st.subheader("📂 Top Categorías")
     
-    # Usar columnas con separador visual
     col_ingresos, col_separador, col_gastos = st.columns([2.5, 0.3, 2.5])
     
     with col_ingresos:
@@ -378,7 +334,6 @@ def show(datos):
             st.info("No hay ingresos por categoría")
     
     with col_separador:
-        # Línea vertical separadora
         st.markdown("""
         <div style="
             border-left: 2px solid #dee2e6;
