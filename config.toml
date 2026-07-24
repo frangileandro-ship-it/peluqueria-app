@@ -1,0 +1,14 @@
+[server]
+# Activa la recarga automática al guardar
+runOnSave = true
+
+# Puerto por defecto
+port = 8501
+
+# Permite conexiones externas (para móvil)
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+# Abre el navegador automáticamente
+gatherUsageStats = false
