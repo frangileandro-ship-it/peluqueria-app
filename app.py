@@ -9,6 +9,13 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- FORZAR RECARGA EN EL NAVEGADOR (DESHABILITAR CACHÉ) ---
+st.markdown("""
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+""", unsafe_allow_html=True)
+
 # --- NUEVA LÍNEA: FORZAR DASHBOARD AL INICIAR ---
 if "pagina" not in st.session_state:
     st.session_state.pagina = "📊 Panel de control"
@@ -248,6 +255,10 @@ with st.sidebar:
             st.rerun()
     
     st.markdown("---")
+    
+    # --- VERSIÓN DE LA APP ---
+    version = os.getenv('RENDER_DEPLOY_ID', '1.0.0')
+    st.caption(f"📌 v{version}")
 
 # --- CARGA DE DATOS ---
 with st.spinner("Cargando datos..."):
