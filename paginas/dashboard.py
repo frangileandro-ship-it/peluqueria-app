@@ -206,13 +206,17 @@ def show(datos):
         total_efectivo = ingresos_efectivo - egresos_efectivo
         total_mp = ingresos_mp - egresos_mp
         
-        # Acumulado: solo si es Anual y hay saldo inicial
+        # --- CORRECCIÓN: Acumulado SOLO en modo Anual ---
         if periodo == "📅 Anual" and mostrar_saldo_inicial:
             acumulado_efectivo = total_efectivo + saldo_inicial_efectivo
             acumulado_mp = total_mp + saldo_inicial_mp
+            etiqueta_acumulado = "📈 Acumulado Anual"
+            mostrar_saldo = True
         else:
             acumulado_efectivo = total_efectivo
             acumulado_mp = total_mp
+            etiqueta_acumulado = "📈 Total"
+            mostrar_saldo = False
         
         # --- MOSTRAR EN 2 COLUMNAS ---
         col_efectivo, col_mp = st.columns(2)
@@ -241,17 +245,17 @@ def show(datos):
             st.metric(
                 label="📊 Total Efectivo",
                 value=f"${total_efectivo:,.2f}",
-                delta=None  # SIN DELTA
+                delta=None
             )
             
             # Mostrar saldo inicial solo si es Anual
-            if periodo == "📅 Anual" and mostrar_saldo_inicial and saldo_inicial_efectivo > 0:
+            if mostrar_saldo and saldo_inicial_efectivo > 0:
                 st.caption(f"📌 Saldo inicial: ${saldo_inicial_efectivo:,.2f}")
             
             st.metric(
-                label="📈 Acumulado" + (" Anual" if periodo == "📅 Anual" and mostrar_saldo_inicial else ""),
+                label=etiqueta_acumulado,
                 value=f"${acumulado_efectivo:,.2f}",
-                delta=None  # SIN DELTA
+                delta=None
             )
         
         with col_mp:
@@ -278,17 +282,17 @@ def show(datos):
             st.metric(
                 label="📊 Total MP",
                 value=f"${total_mp:,.2f}",
-                delta=None  # SIN DELTA
+                delta=None
             )
             
             # Mostrar saldo inicial solo si es Anual
-            if periodo == "📅 Anual" and mostrar_saldo_inicial and saldo_inicial_mp > 0:
+            if mostrar_saldo and saldo_inicial_mp > 0:
                 st.caption(f"📌 Saldo inicial: ${saldo_inicial_mp:,.2f}")
             
             st.metric(
-                label="📈 Acumulado" + (" Anual" if periodo == "📅 Anual" and mostrar_saldo_inicial else ""),
+                label=etiqueta_acumulado,
                 value=f"${acumulado_mp:,.2f}",
-                delta=None  # SIN DELTA
+                delta=None
             )
     
     st.markdown("---")
