@@ -215,7 +215,7 @@ def show(datos):
         else:
             acumulado_efectivo = total_efectivo
             acumulado_mp = total_mp
-            etiqueta_acumulado = "📈 Total"
+            etiqueta_acumulado = ""
             mostrar_saldo = False
         
         # --- MOSTRAR EN 2 COLUMNAS ---
@@ -248,15 +248,16 @@ def show(datos):
                 delta=None
             )
             
-            # Mostrar saldo inicial solo si es Anual
-            if mostrar_saldo and saldo_inicial_efectivo > 0:
-                st.caption(f"📌 Saldo inicial: ${saldo_inicial_efectivo:,.2f}")
-            
-            st.metric(
-                label=etiqueta_acumulado,
-                value=f"${acumulado_efectivo:,.2f}",
-                delta=None
-            )
+            # Mostrar saldo inicial y acumulado SOLO en modo Anual
+            if mostrar_saldo:
+                if saldo_inicial_efectivo > 0:
+                    st.caption(f"📌 Saldo inicial: ${saldo_inicial_efectivo:,.2f}")
+                
+                st.metric(
+                    label=etiqueta_acumulado,
+                    value=f"${acumulado_efectivo:,.2f}",
+                    delta=None
+                )
         
         with col_mp:
             st.markdown("""
@@ -285,15 +286,16 @@ def show(datos):
                 delta=None
             )
             
-            # Mostrar saldo inicial solo si es Anual
-            if mostrar_saldo and saldo_inicial_mp > 0:
-                st.caption(f"📌 Saldo inicial: ${saldo_inicial_mp:,.2f}")
-            
-            st.metric(
-                label=etiqueta_acumulado,
-                value=f"${acumulado_mp:,.2f}",
-                delta=None
-            )
+            # Mostrar saldo inicial y acumulado SOLO en modo Anual
+            if mostrar_saldo:
+                if saldo_inicial_mp > 0:
+                    st.caption(f"📌 Saldo inicial: ${saldo_inicial_mp:,.2f}")
+                
+                st.metric(
+                    label=etiqueta_acumulado,
+                    value=f"${acumulado_mp:,.2f}",
+                    delta=None
+                )
     
     st.markdown("---")
     
