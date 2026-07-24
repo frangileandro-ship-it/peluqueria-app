@@ -1,5 +1,5 @@
 import streamlit as st
-from sheets_manager import load_all_data
+from sheets_manager import load_all_data, clear_cache
 import os
 
 # --- CONFIGURACIÓN ---
@@ -253,6 +253,13 @@ with st.sidebar:
         ):
             st.session_state.pagina = opcion
             st.rerun()
+    
+    st.markdown("---")
+    
+    # --- BOTÓN DE ACTUALIZACIÓN DE DATOS ---
+    if st.button("🔄 Actualizar datos", use_container_width=True):
+        clear_cache()
+        st.rerun()
     
     st.markdown("---")
     
