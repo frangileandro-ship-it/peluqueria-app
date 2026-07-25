@@ -13,20 +13,14 @@ SHEET_ID = '16azlcSMh1_zpxNQNbqyNuMBxzCFmYGSF2rWZPf2WR6I'
 
 @st.cache_resource
 def get_sheets_client():
-    """
-    Obtiene el cliente de Google Sheets de forma persistente.
-    El cliente se mantiene vivo entre recargas.
-    """
+    """Obtiene el cliente de Google Sheets de forma persistente."""
     try:
-        # 1. INTENTAR DESDE VARIABLE DE ENTORNO (RENDER)
         env_creds = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         
         if env_creds:
             try:
-                # Parsear el JSON desde la variable de entorno
                 creds_dict = json.loads(env_creds)
             except json.JSONDecodeError:
-                # Si falla, intentar limpiar el string
                 cleaned = env_creds.strip()
                 if cleaned.startswith('{') and cleaned.endswith('}'):
                     try:
@@ -38,7 +32,6 @@ def get_sheets_client():
                     st.error("❌ La variable GOOGLE_APPLICATION_CREDENTIALS no es un JSON válido")
                     return None
         else:
-            # 2. INTENTAR DESDE ARCHIVO LOCAL (DESARROLLO)
             if os.path.exists('service_account.json'):
                 with open('service_account.json', 'r') as f:
                     creds_dict = json.load(f)
@@ -46,25 +39,18 @@ def get_sheets_client():
                 st.error("❌ No se encontraron credenciales")
                 return None
         
-        # 3. CREAR CREDENCIALES USANDO UN ARCHIVO TEMPORAL
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
         
-        # Crear archivo temporal con el JSON
         temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
         json.dump(creds_dict, temp_file)
         temp_file.close()
         
         try:
-            # Autenticar usando el archivo temporal
             creds = ServiceAccountCredentials.from_json_keyfile_name(temp_file.name, scope)
             client = gspread.authorize(creds)
-            
-            # Limpiar archivo temporal
             os.unlink(temp_file.name)
-            
             return client
         except Exception as e:
-            # Si falla la autenticación, limpiar y lanzar error
             os.unlink(temp_file.name)
             raise e
         
@@ -133,22 +119,17 @@ def convertir_fecha_ddmmaaaa(valor):
     
     return pd.NaT
 
-@st.cache_data(ttl=300)  # 5 minutos de caché
+@st.cache_data(ttl=300)
 def load_sheet_data(sheet_name):
-    """
-    Carga los datos de una hoja específica.
-    El caché se renueva cada 5 minutos.
-    """
+    """Carga los datos de una hoja específica."""
     try:
         client = get_sheets_client()
         if client is None:
             return pd.DataFrame()
         
-        # Intentar abrir el sheet
         try:
             sheet = client.open_by_key(SHEET_ID).worksheet(sheet_name)
         except Exception as e:
-            # Si hay error, reintentar una vez
             st.warning(f"⚠️ Error al cargar {sheet_name}, reintentando...")
             client = get_sheets_client()
             if client is None:
@@ -162,7 +143,6 @@ def load_sheet_data(sheet_name):
         
         df = pd.DataFrame(records)
         
-        # Renombrar columnas
         mapeo = {
             'IDENTIFICACIÓN': 'ID',
             'Fecha': 'Fecha',
@@ -179,17 +159,14 @@ def load_sheet_data(sheet_name):
             if col in mapeo:
                 df = df.rename(columns={col: mapeo[col]})
         
-        # Convertir fechas
         if 'Fecha' in df.columns:
             df['Fecha'] = df['Fecha'].apply(convertir_fecha_ddmmaaaa)
             df = df.dropna(subset=['Fecha'])
         
-        # Convertir importe
         if 'Importe' in df.columns:
             df['Importe'] = df['Importe'].apply(limpiar_importe)
             df['Importe'] = pd.to_numeric(df['Importe'], errors='coerce').fillna(0.0)
         
-        # Normalizar Ingreso/Gasto
         if 'Ingreso/Gasto' in df.columns:
             df['Ingreso/Gasto'] = df['Ingreso/Gasto'].astype(str).str.upper().str.strip()
             df['Ingreso/Gasto'] = df['Ingreso/Gasto'].map({
@@ -203,7 +180,7 @@ def load_sheet_data(sheet_name):
         st.error(f"❌ Error al cargar {sheet_name}: {str(e)}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=300)  # 5 minutos de caché
+@st.cache_data(ttl=300)
 def load_all_data():
     """Carga todas las hojas con caché de 5 minutos"""
     return {
@@ -225,9 +202,10 @@ def add_movement(data):
         records = sheet.get_all_records()
         next_id = len(records) + 1 if records else 1
         
+        # --- CORRECCIÓN: Guardar fecha en formato DD/MM/AAAA ---
         row = [
             next_id,
-            data['fecha'].strftime('%Y-%m-%d'),
+            data['fecha'].strftime('%d/%m/%Y'),  # <--- CAMBIADO
             data['tipo'],
             data['categoria'],
             data['cliente'],
@@ -238,7 +216,6 @@ def add_movement(data):
         
         sheet.append_row(row)
         
-        # Limpiar solo el caché de datos, no la conexión
         st.cache_data.clear()
         
         return True
@@ -259,7 +236,7 @@ def add_caja_registro(data):
         
         row = [
             next_id,
-            data['fecha'].strftime('%Y-%m-%d'),
+            data['fecha'].strftime('%d/%m/%Y'),  # <--- CAMBIADO
             data['tipo'],
             data['concepto'],
             float(data['efectivo']),
@@ -285,7 +262,12 @@ def add_turn(data):
         records = sheet.get_all_records()
         next_id = len(records) + 1 if records else 1
         
-        row = [next_id, data['fecha_hora'].strftime('%Y-%m-%d %H:%M'), data['cliente']]
+        row = [
+            next_id,
+            data['fecha_hora'].strftime('%d/%m/%Y %H:%M'),  # <--- CAMBIADO
+            data['cliente']
+        ]
+        
         sheet.append_row(row)
         st.cache_data.clear()
         return True
