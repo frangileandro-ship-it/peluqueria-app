@@ -78,7 +78,7 @@ def show(datos):
         # --- MEDIO DE PAGO ---
         medio_pago = st.selectbox(
             "💳 Medio de Pago",
-            ["", "Efectivo", "Tarjeta Débito", "Tarjeta Crédito", "Transferencia", "Mercado Pago", "Otro"],
+            ["", "Efectivo", "Tarjeta Débito", "Tarjeta Crédito", "Mercado Pago", "Otro"],
             index=0
         )
         
@@ -201,7 +201,7 @@ def show(datos):
     # --- 3. TABLA DE MOVIMIENTOS ---
     if not df_filtrado.empty:
         total_filtrado = df_filtrado['Importe'].sum()
-        st.info(f"📊 Mostrando {len(df_filtrado)} movimientos - Total: ${total_filtrado:,.2f}")
+        st.info(f"📊 Mostrando {len(df_filtrado)} movimientos")
         
         # Ordenar por fecha (más reciente primero)
         df_filtrado = df_filtrado.sort_values('Fecha', ascending=False)
