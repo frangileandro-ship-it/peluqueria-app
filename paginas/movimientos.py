@@ -204,7 +204,7 @@ def show(datos):
         st.warning("⚠️ No hay movimientos para filtrar")
         df_filtrado = movimientos.copy()
     
-    # --- 3. TABLA DE MOVIMIENTOS CON EDICIÓN Y ELIMINACIÓN ---
+        # --- 3. TABLA DE MOVIMIENTOS CON EDICIÓN Y ELIMINACIÓN ---
     if not df_filtrado.empty:
         total_filtrado = df_filtrado['Importe'].sum()
         st.info(f"📊 Mostrando {len(df_filtrado)} movimientos - Total: ${total_filtrado:,.2f}")
@@ -215,38 +215,45 @@ def show(datos):
         # --- CREAR COPIA EDITABLE (SIN ID) ---
         df_editable = df_filtrado.drop(columns=['ID'], errors='ignore').copy()
         
-        # --- CONFIGURACIÓN DE COLUMNAS PARA EDITOR ---
+        # --- CONFIGURACIÓN DE COLUMNAS PARA EDITOR (MÁS ANGOSTAS) ---
         column_config = {
             "Fecha": st.column_config.DateColumn(
                 "Fecha",
                 format="DD/MM/YYYY",
-                required=True
+                required=True,
+                width=90
             ),
             "Ingreso/Gasto": st.column_config.SelectboxColumn(
                 "Tipo",
                 options=["Ingreso", "Gasto"],
-                required=True
+                required=True,
+                width=85
             ),
             "Categoría": st.column_config.TextColumn(
                 "Categoría",
-                required=True
+                required=True,
+                width=130
             ),
             "Cliente/Proveedor": st.column_config.TextColumn(
-                "Cliente/Proveedor"
+                "Cliente/Proveedor",
+                width=120
             ),
             "Medio de Pago": st.column_config.SelectboxColumn(
                 "Medio de Pago",
                 options=["Efectivo", "Tarjeta Débito", "Tarjeta Crédito", "Transferencia", "Mercado Pago", "Otro"],
-                required=True
+                required=True,
+                width=110
             ),
             "Importe": st.column_config.NumberColumn(
                 "Importe",
                 format="$%.2f",
                 min_value=0,
-                required=True
+                required=True,
+                width=90
             ),
             "Observaciones": st.column_config.TextColumn(
-                "Observaciones"
+                "Observaciones",
+                width=200
             )
         }
         
@@ -271,7 +278,6 @@ def show(datos):
         
         if recargar:
             clear_cache()
-            st.session_state.recargar_datos = True
             st.session_state.editor_key += 1
             st.rerun()
         
@@ -340,7 +346,7 @@ def show(datos):
                         st.error(f"❌ Error al actualizar: {e}")
                         break
             
-            # Detectar filas eliminadas
+            # Detectar filas eliminadas (si el editor tiene menos filas que el original)
             if len(edited_df) < len(df_filtrado):
                 try:
                     client = get_sheets_client()
@@ -382,11 +388,80 @@ def show(datos):
             else:
                 st.info("ℹ️ No se detectaron cambios")
         
-        st.caption("💡 **Para editar:** hacé doble clic en una celda, luego presioná '💾 Guardar cambios'.")
-        st.caption("💡 **Para eliminar:** usá el ícono 🗑️ al final de la fila en la tabla, luego presioná '💾 Guardar cambios'.")
+        st.markdown("---")
+        
+        # --- LISTA DE MOVIMIENTOS CON BOTÓN DE ELIMINAR ---
+        st.subheader("🗑️ Eliminar movimientos")
+        st.caption("Hacé clic en el botón 🗑️ de la fila que quieras eliminar.")
+        
+        # Encabezados
+        h1, h2, h3, h4, h5, h6, h7, h8 = st.columns([1.2, 0.8, 1.5, 1.5, 1.2, 1, 2.5, 0.5])
+        with h1:
+            st.markdown("**Fecha**")
+        with h2:
+            st.markdown("**Tipo**")
+        with h3:
+            st.markdown("**Categoría**")
+        with h4:
+            st.markdown("**Cliente/Prov.**")
+        with h5:
+            st.markdown("**Medio Pago**")
+        with h6:
+            st.markdown("**Importe**")
+        with h7:
+            st.markdown("**Observaciones**")
+        with h8:
+            st.markdown("**Acción**")
+        
+        st.markdown("---")
+        
+        # Filas con botón eliminar
+        for idx, row in df_filtrado.iterrows():
+            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.2, 0.8, 1.5, 1.5, 1.2, 1, 2.5, 0.5])
+            
+            with c1:
+                st.write(row['Fecha'].strftime('%d/%m/%Y') if pd.notna(row['Fecha']) else '')
+            with c2:
+                st.write(row['Ingreso/Gasto'] if pd.notna(row['Ingreso/Gasto']) else '')
+            with c3:
+                st.write(row['Categoría'] if pd.notna(row['Categoría']) else '')
+            with c4:
+                st.write(row['Cliente/Proveedor'] if pd.notna(row['Cliente/Proveedor']) else '')
+            with c5:
+                st.write(row['Medio de Pago'] if pd.notna(row['Medio de Pago']) else '')
+            with c6:
+                st.write(f"${row['Importe']:,.2f}" if pd.notna(row['Importe']) else '')
+            with c7:
+                obs = row['Observaciones'] if pd.notna(row['Observaciones']) else ''
+                st.write(obs[:50] + '...' if len(obs) > 50 else obs)
+            with c8:
+                if st.button("🗑️", key=f"del_{row['ID']}", help="Eliminar este movimiento"):
+                    try:
+                        client = get_sheets_client()
+                        if client is not None:
+                            sheet = client.open_by_key(SHEET_ID).worksheet('Movimientos')
+                            todas_las_filas = sheet.get_all_values()
+                            
+                            fila_idx = None
+                            for i, fila in enumerate(todas_las_filas):
+                                if i > 0 and len(fila) > 0 and fila[0] == str(row['ID']):
+                                    fila_idx = i + 1
+                                    break
+                            
+                            if fila_idx:
+                                sheet.delete_rows(fila_idx)
+                                st.success(f"✅ Movimiento eliminado correctamente")
+                                clear_cache()
+                                st.session_state.editor_key += 1
+                                st.rerun()
+                            else:
+                                st.error("❌ No se encontró el movimiento")
+                    except Exception as e:
+                        st.error(f"❌ Error al eliminar: {e}")
+            
+            st.markdown("---")
         
         # --- BOTÓN PARA EXPORTAR CSV ---
-        st.markdown("---")
         csv = df_filtrado.drop(columns=['ID'], errors='ignore').to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Descargar CSV",
