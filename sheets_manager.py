@@ -119,7 +119,7 @@ def convertir_fecha_ddmmaaaa(valor):
     
     return pd.NaT
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def load_sheet_data(sheet_name):
     """Carga los datos de una hoja específica."""
     try:
@@ -180,7 +180,7 @@ def load_sheet_data(sheet_name):
         st.error(f"❌ Error al cargar {sheet_name}: {str(e)}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def load_all_data():
     """Carga todas las hojas con caché de 5 minutos"""
     return {
