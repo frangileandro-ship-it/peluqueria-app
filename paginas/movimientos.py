@@ -188,7 +188,7 @@ def show(datos):
             df_filtrado = movimientos_con_fecha[
                 (movimientos_con_fecha['Fecha'].dt.year == año) &
                 (movimientos_con_fecha['Fecha'].dt.month == mes)
-            ]
+            ].copy()
             
             # Mostrar nombre del mes
             nombre_mes = calendar.month_name[mes]
@@ -196,18 +196,18 @@ def show(datos):
             
         else:
             st.warning("⚠️ No hay fechas válidas en los datos")
-            df_filtrado = movimientos
+            df_filtrado = movimientos.copy()
     else:
         st.warning("⚠️ No hay movimientos para filtrar")
-        df_filtrado = movimientos
+        df_filtrado = movimientos.copy()
     
     # --- 3. TABLA DE MOVIMIENTOS CON EDICIÓN Y ELIMINACIÓN ---
     if not df_filtrado.empty:
         total_filtrado = df_filtrado['Importe'].sum()
         st.info(f"📊 Mostrando {len(df_filtrado)} movimientos - Total: ${total_filtrado:,.2f}")
         
-        # Ordenar por fecha (más reciente primero)
-        df_filtrado = df_filtrado.sort_values('Fecha', ascending=False)
+        # Ordenar por fecha (más reciente primero) y resetear índice
+        df_filtrado = df_filtrado.sort_values('Fecha', ascending=False).reset_index(drop=True)
         
         # --- CREAR COPIA EDITABLE (SIN ID) ---
         df_editable = df_filtrado.drop(columns=['ID'], errors='ignore').copy()
@@ -229,8 +229,7 @@ def show(datos):
                 required=True
             ),
             "Cliente/Proveedor": st.column_config.TextColumn(
-                "Cliente/Proveedor",
-                required=True
+                "Cliente/Proveedor"
             ),
             "Medio de Pago": st.column_config.SelectboxColumn(
                 "Medio de Pago",
@@ -248,7 +247,7 @@ def show(datos):
             )
         }
         
-        # --- DATA EDITOR CON ELIMINACIÓN ---
+        # --- DATA EDITOR ---
         edited_df = st.data_editor(
             df_editable,
             use_container_width=True,
@@ -258,42 +257,103 @@ def show(datos):
             key=f"editor_movimientos_{st.session_state.editor_key}"
         )
         
-        # --- DETECTAR FILAS ELIMINADAS ---
-        if len(edited_df) < len(df_editable):
-            # IDs originales
-            ids_originales = df_filtrado['ID'].tolist()
+        # --- BOTONES DE ACCIÓN ---
+        col_btn1, col_btn2 = st.columns(2)
+        
+        with col_btn1:
+            guardar = st.button("💾 Guardar cambios", use_container_width=True, type="primary")
+        
+        with col_btn2:
+            eliminar_ultima = st.button("🗑️ Eliminar última fila", use_container_width=True)
+        
+        # --- GUARDAR CAMBIOS (EDICIÓN) ---
+        if guardar:
+            cambios_realizados = False
             
-            # IDs que quedaron (comparando por contenido)
-            ids_restantes = []
-            for idx, row in edited_df.iterrows():
-                for _, original_row in df_filtrado.iterrows():
-                    match = True
-                    for col in df_editable.columns:
-                        if col in original_row.index:
-                            valor_original = original_row[col]
-                            valor_nuevo = row[col]
-                            if pd.isna(valor_original) and pd.isna(valor_nuevo):
-                                continue
-                            if pd.isna(valor_original) or pd.isna(valor_nuevo):
-                                match = False
-                                break
-                            if valor_original != valor_nuevo:
-                                match = False
-                                break
-                    if match:
-                        ids_restantes.append(original_row['ID'])
-                        break
-            
-            ids_eliminados = [id for id in ids_originales if id not in ids_restantes]
-            
-            if ids_eliminados:
-                try:
-                    client = get_sheets_client()
-                    if client is None:
-                        st.error("❌ No se pudo conectar con Google Sheets")
-                    else:
+            for idx in range(min(len(edited_df), len(df_filtrado))):
+                row = edited_df.iloc[idx]
+                original_row = df_filtrado.iloc[idx]
+                id_original = original_row['ID']
+                
+                # Verificar si hubo cambios
+                hubo_cambio = False
+                for col in df_editable.columns:
+                    if col in original_row.index:
+                        val_original = original_row[col]
+                        val_nuevo = row[col]
+                        
+                        # Comparar valores
+                        if pd.isna(val_original) and pd.isna(val_nuevo):
+                            continue
+                        if pd.isna(val_original) and not pd.isna(val_nuevo):
+                            hubo_cambio = True
+                            break
+                        if not pd.isna(val_original) and pd.isna(val_nuevo):
+                            hubo_cambio = True
+                            break
+                        if val_original != val_nuevo:
+                            hubo_cambio = True
+                            break
+                
+                if hubo_cambio:
+                    try:
+                        client = get_sheets_client()
+                        if client is None:
+                            st.error("❌ No se pudo conectar con Google Sheets")
+                            break
+                        
                         sheet = client.open_by_key(SHEET_ID).worksheet('Movimientos')
                         todas_las_filas = sheet.get_all_values()
+                        
+                        fila_idx = None
+                        for i, fila in enumerate(todas_las_filas):
+                            if i > 0 and len(fila) > 0 and fila[0] == str(id_original):
+                                fila_idx = i + 1
+                                break
+                        
+                        if fila_idx:
+                            # Formatear fecha
+                            if hasattr(row['Fecha'], 'strftime'):
+                                fecha_str = row['Fecha'].strftime('%Y-%m-%d')
+                            else:
+                                fecha_str = str(row['Fecha'])
+                            
+                            sheet.update(f'A{fila_idx}:H{fila_idx}', [[
+                                str(id_original),
+                                fecha_str,
+                                row['Ingreso/Gasto'],
+                                row['Categoría'],
+                                row['Cliente/Proveedor'] if pd.notna(row['Cliente/Proveedor']) else "",
+                                row['Medio de Pago'],
+                                float(row['Importe']),
+                                row['Observaciones'] if pd.notna(row['Observaciones']) else ""
+                            ]])
+                            cambios_realizados = True
+                    except Exception as e:
+                        st.error(f"❌ Error al actualizar: {e}")
+                        break
+            
+            # Detectar filas eliminadas (si el editor tiene menos filas que el original)
+            if len(edited_df) < len(df_filtrado):
+                try:
+                    client = get_sheets_client()
+                    if client is not None:
+                        sheet = client.open_by_key(SHEET_ID).worksheet('Movimientos')
+                        todas_las_filas = sheet.get_all_values()
+                        
+                        # IDs de las filas que quedaron
+                        ids_restantes = []
+                        for idx in range(len(edited_df)):
+                            row = edited_df.iloc[idx]
+                            for _, orig in df_filtrado.iterrows():
+                                if (pd.notna(orig['Fecha']) and hasattr(row['Fecha'], 'strftime') and 
+                                    orig['Fecha'].strftime('%Y-%m-%d') == row['Fecha'].strftime('%Y-%m-%d') and
+                                    orig['Importe'] == row['Importe']):
+                                    ids_restantes.append(orig['ID'])
+                                    break
+                        
+                        ids_originales = df_filtrado['ID'].tolist()
+                        ids_eliminados = [i for i in ids_originales if i not in ids_restantes]
                         
                         filas_a_eliminar = []
                         for i, fila in enumerate(todas_las_filas):
@@ -303,81 +363,49 @@ def show(datos):
                         for fila_idx in sorted(filas_a_eliminar, reverse=True):
                             sheet.delete_rows(fila_idx)
                         
-                        st.success(f"✅ Se eliminaron {len(filas_a_eliminar)} movimientos")
-                        clear_cache()
-                        st.session_state.editor_key += 1
-                        st.rerun()
+                        if filas_a_eliminar:
+                            st.success(f"✅ Se eliminaron {len(filas_a_eliminar)} movimientos")
+                            cambios_realizados = True
                 except Exception as e:
                     st.error(f"❌ Error al eliminar: {e}")
-        
-        # --- DETECTAR CAMBIOS EN CELDAS ---
-        if len(edited_df) == len(df_editable):
-            cambios = False
-            for idx, row in edited_df.iterrows():
-                if idx < len(df_filtrado):
-                    original_row = df_filtrado.iloc[idx]
-                    id_original = original_row['ID']
-                    
-                    for col in df_editable.columns:
-                        if col in original_row.index:
-                            valor_original = original_row[col]
-                            valor_nuevo = row[col]
-                            
-                            if pd.isna(valor_original) and pd.isna(valor_nuevo):
-                                continue
-                            if pd.isna(valor_original) and not pd.isna(valor_nuevo):
-                                cambios = True
-                                break
-                            if not pd.isna(valor_original) and pd.isna(valor_nuevo):
-                                cambios = True
-                                break
-                            if valor_original != valor_nuevo:
-                                cambios = True
-                                break
-                    if cambios:
-                        break
             
-            if cambios:
+            if cambios_realizados:
+                st.success("✅ Cambios guardados correctamente")
+                clear_cache()
+                st.session_state.editor_key += 1
+                st.rerun()
+            else:
+                st.info("ℹ️ No se detectaron cambios")
+        
+        # --- ELIMINAR ÚLTIMA FILA ---
+        if eliminar_ultima:
+            if len(df_filtrado) > 0:
+                id_ultima = df_filtrado.iloc[-1]['ID']
                 try:
                     client = get_sheets_client()
-                    if client is None:
-                        st.error("❌ No se pudo conectar con Google Sheets")
-                    else:
+                    if client is not None:
                         sheet = client.open_by_key(SHEET_ID).worksheet('Movimientos')
                         todas_las_filas = sheet.get_all_values()
                         
-                        for idx, row in edited_df.iterrows():
-                            if idx < len(df_filtrado):
-                                id_original = df_filtrado.iloc[idx]['ID']
-                                
-                                fila_idx = None
-                                for i, fila in enumerate(todas_las_filas):
-                                    if i > 0 and len(fila) > 0 and fila[0] == str(id_original):
-                                        fila_idx = i + 1
-                                        break
-                                
-                                if fila_idx:
-                                    fecha_str = row['Fecha'].strftime('%Y-%m-%d') if hasattr(row['Fecha'], 'strftime') else row['Fecha']
-                                    
-                                    sheet.update(f'A{fila_idx}:H{fila_idx}', [[
-                                        str(id_original),
-                                        fecha_str,
-                                        row['Ingreso/Gasto'],
-                                        row['Categoría'],
-                                        row['Cliente/Proveedor'],
-                                        row['Medio de Pago'],
-                                        float(row['Importe']),
-                                        row['Observaciones'] if pd.notna(row['Observaciones']) else ""
-                                    ]])
+                        fila_idx = None
+                        for i, fila in enumerate(todas_las_filas):
+                            if i > 0 and len(fila) > 0 and fila[0] == str(id_ultima):
+                                fila_idx = i + 1
+                                break
                         
-                        st.success("✅ Cambios guardados correctamente")
-                        clear_cache()
-                        st.session_state.editor_key += 1
-                        st.rerun()
+                        if fila_idx:
+                            sheet.delete_rows(fila_idx)
+                            st.success(f"✅ Movimiento eliminado correctamente")
+                            clear_cache()
+                            st.session_state.editor_key += 1
+                            st.rerun()
+                        else:
+                            st.error("❌ No se encontró el movimiento")
                 except Exception as e:
-                    st.error(f"❌ Error al guardar cambios: {e}")
+                    st.error(f"❌ Error al eliminar: {e}")
         
-        st.caption("💡 Para editar: hacé doble clic en una celda. Para eliminar: usá el ícono 🗑️ al final de la fila.")
+        st.caption("💡 **Para editar:** hacé doble clic en una celda, luego presioná '💾 Guardar cambios'.")
+        st.caption("💡 **Para eliminar:** usá el ícono 🗑️ al final de la fila en la tabla, luego presioná '💾 Guardar cambios'.")
         
         # --- BOTÓN PARA EXPORTAR CSV ---
         st.markdown("---")
