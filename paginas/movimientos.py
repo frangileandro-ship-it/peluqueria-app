@@ -17,19 +17,15 @@ def show(datos):
         st.session_state.tipo_actual = ""
     if 'editor_key' not in st.session_state:
         st.session_state.editor_key = 0
-    if 'recargar_datos' not in st.session_state:
-        st.session_state.recargar_datos = False
     
     # --- 1. FORMULARIO PARA AGREGAR MOVIMIENTO (SIEMPRE VISIBLE) ---
     st.subheader("➕ Nuevo Movimiento")
     
-    # --- CAMPOS FUERA DEL FORMULARIO PARA ACTUALIZACIÓN EN TIEMPO REAL ---
     col1, col2 = st.columns(2)
     
     with col1:
         fecha = st.date_input("📅 Fecha", datetime.now())
         
-        # --- TIPO (actualiza session_state) ---
         tipo = st.selectbox(
             "📌 Tipo", 
             ["", "Ingreso", "Gasto"],
@@ -38,7 +34,6 @@ def show(datos):
         )
         st.session_state.tipo_actual = tipo
         
-        # --- CATEGORÍA (filtrada por tipo) ---
         if not categorias.empty and 'Ingreso/Gasto' in categorias.columns and 'Categoría' in categorias.columns:
             if tipo:
                 cat_disponibles = categorias[
@@ -53,7 +48,6 @@ def show(datos):
             categoria = st.selectbox("📂 Categoría", [""], index=0)
     
     with col2:
-        # --- CLIENTE/PROVEEDOR (filtrado por tipo) ---
         if not clientes.empty and 'Cliente-Proveedor' in clientes.columns:
             if 'Ingreso/Gasto' in clientes.columns:
                 if tipo == "Ingreso":
@@ -79,14 +73,12 @@ def show(datos):
             help="Se filtran según el tipo seleccionado"
         )
         
-        # --- MEDIO DE PAGO ---
         medio_pago = st.selectbox(
             "💳 Medio de Pago",
             ["", "Efectivo", "Tarjeta Débito", "Tarjeta Crédito", "Mercado Pago", "Otro"],
             index=0
         )
         
-        # --- IMPORTE (VACÍO POR DEFECTO) ---
         importe_str = st.text_input(
             "💰 Importe ($)",
             placeholder="Ej: 1500.00",
@@ -95,9 +87,7 @@ def show(datos):
     
     observaciones = st.text_area("📝 Observaciones", placeholder="Opcional...")
     
-    # --- BOTÓN DE GUARDADO (FUERA DEL FORMULARIO) ---
     if st.button("💾 Guardar movimiento", use_container_width=True, type="primary"):
-        # --- CONVERTIR IMPORTE ---
         importe = 0.0
         importe_error = False
         
@@ -114,21 +104,16 @@ def show(datos):
         else:
             importe_error = True
         
-        # --- VALIDACIONES ---
         errores = []
         
         if not tipo:
             errores.append("⚠️ Seleccioná un Tipo (Ingreso o Gasto)")
-        
         if not categoria:
             errores.append("⚠️ Seleccioná una Categoría")
-        
         if not cliente:
             errores.append("⚠️ Seleccioná un Cliente/Proveedor")
-        
         if not medio_pago:
             errores.append("⚠️ Seleccioná un Medio de Pago")
-        
         if importe_error or importe <= 0:
             errores.append("⚠️ Ingresá un Importe válido mayor a 0")
         
@@ -136,7 +121,6 @@ def show(datos):
             for error in errores:
                 st.error(error)
         else:
-            # Preparar datos
             data = {
                 'fecha': fecha,
                 'tipo': tipo,
@@ -151,7 +135,6 @@ def show(datos):
                 st.success("✅ Movimiento guardado correctamente")
                 st.balloons()
                 clear_cache()
-                st.session_state.recargar_datos = True
                 st.session_state.editor_key += 1
                 st.rerun()
     
@@ -160,31 +143,25 @@ def show(datos):
     # --- 2. FILTRO POR MES ---
     st.subheader("🔍 Filtrar movimientos")
     
-    # Obtener meses disponibles en los datos
     if not movimientos.empty and 'Fecha' in movimientos.columns:
-        # Convertir fechas
         movimientos['Fecha'] = pd.to_datetime(movimientos['Fecha'], errors='coerce')
         movimientos_con_fecha = movimientos.dropna(subset=['Fecha'])
         
         if not movimientos_con_fecha.empty:
-            # Obtener meses únicos con datos
             meses_disponibles = sorted(movimientos_con_fecha['Fecha'].dt.strftime('%Y-%m').unique().tolist())
             
-            # Determinar mes por defecto
             mes_actual = datetime.now().strftime('%Y-%m')
             if mes_actual in meses_disponibles:
                 mes_default = mes_actual
             else:
                 mes_default = meses_disponibles[-1] if meses_disponibles else mes_actual
             
-            # Selector de mes
             mes_seleccionado = st.selectbox(
                 "📅 Seleccionar mes",
                 meses_disponibles,
                 index=meses_disponibles.index(mes_default) if mes_default in meses_disponibles else 0
             )
             
-            # Filtrar datos por mes seleccionado
             año = int(mes_seleccionado.split('-')[0])
             mes = int(mes_seleccionado.split('-')[1])
             
@@ -193,10 +170,8 @@ def show(datos):
                 (movimientos_con_fecha['Fecha'].dt.month == mes)
             ].copy()
             
-            # Mostrar nombre del mes
             nombre_mes = calendar.month_name[mes]
             st.caption(f"📌 Mostrando datos de {nombre_mes} {año}")
-            
         else:
             st.warning("⚠️ No hay fechas válidas en los datos")
             df_filtrado = movimientos.copy()
@@ -204,56 +179,40 @@ def show(datos):
         st.warning("⚠️ No hay movimientos para filtrar")
         df_filtrado = movimientos.copy()
     
-        # --- 3. TABLA DE MOVIMIENTOS CON EDICIÓN Y ELIMINACIÓN ---
+    # --- 3. TABLA DE MOVIMIENTOS CON EDICIÓN Y ELIMINACIÓN ---
     if not df_filtrado.empty:
         total_filtrado = df_filtrado['Importe'].sum()
         st.info(f"📊 Mostrando {len(df_filtrado)} movimientos - Total: ${total_filtrado:,.2f}")
         
-        # Ordenar por fecha (más reciente primero) y resetear índice
         df_filtrado = df_filtrado.sort_values('Fecha', ascending=False).reset_index(drop=True)
         
         # --- CREAR COPIA EDITABLE (SIN ID) ---
         df_editable = df_filtrado.drop(columns=['ID'], errors='ignore').copy()
         
-        # --- CONFIGURACIÓN DE COLUMNAS PARA EDITOR (MÁS ANGOSTAS) ---
+        # --- CONFIGURACIÓN DE COLUMNAS ---
         column_config = {
             "Fecha": st.column_config.DateColumn(
-                "Fecha",
-                format="DD/MM/YYYY",
-                required=True,
-                width=90
+                "Fecha", format="DD/MM/YYYY", required=True, width=90
             ),
             "Ingreso/Gasto": st.column_config.SelectboxColumn(
-                "Tipo",
-                options=["Ingreso", "Gasto"],
-                required=True,
-                width=85
+                "Tipo", options=["Ingreso", "Gasto"], required=True, width=85
             ),
             "Categoría": st.column_config.TextColumn(
-                "Categoría",
-                required=True,
-                width=130
+                "Categoría", required=True, width=130
             ),
             "Cliente/Proveedor": st.column_config.TextColumn(
-                "Cliente/Proveedor",
-                width=120
+                "Cliente/Proveedor", width=120
             ),
             "Medio de Pago": st.column_config.SelectboxColumn(
                 "Medio de Pago",
                 options=["Efectivo", "Tarjeta Débito", "Tarjeta Crédito", "Transferencia", "Mercado Pago", "Otro"],
-                required=True,
-                width=110
+                required=True, width=110
             ),
             "Importe": st.column_config.NumberColumn(
-                "Importe",
-                format="$%.2f",
-                min_value=0,
-                required=True,
-                width=90
+                "Importe", format="$%.2f", min_value=0, required=True, width=90
             ),
             "Observaciones": st.column_config.TextColumn(
-                "Observaciones",
-                width=200
+                "Observaciones", width=200
             )
         }
         
@@ -290,7 +249,6 @@ def show(datos):
                 original_row = df_filtrado.iloc[idx]
                 id_original = original_row['ID']
                 
-                # Verificar si hubo cambios
                 hubo_cambio = False
                 for col in df_editable.columns:
                     if col in original_row.index:
@@ -326,27 +284,33 @@ def show(datos):
                                 break
                         
                         if fila_idx:
+                            # Formatear fecha como DD/MM/YYYY para que Sheets la interprete
                             if hasattr(row['Fecha'], 'strftime'):
-                                fecha_str = row['Fecha'].strftime('%Y-%m-%d')
+                                fecha_str = row['Fecha'].strftime('%d/%m/%Y')
                             else:
                                 fecha_str = str(row['Fecha'])
                             
-                            sheet.update(f'A{fila_idx}:H{fila_idx}', [[
-                                str(id_original),
-                                fecha_str,
-                                row['Ingreso/Gasto'],
-                                row['Categoría'],
-                                row['Cliente/Proveedor'] if pd.notna(row['Cliente/Proveedor']) else "",
-                                row['Medio de Pago'],
-                                float(row['Importe']),
-                                row['Observaciones'] if pd.notna(row['Observaciones']) else ""
-                            ]])
+                            # --- CORRECCIÓN: value_input_option='USER_ENTERED' ---
+                            sheet.update(
+                                f'A{fila_idx}:H{fila_idx}',
+                                [[
+                                    str(id_original),
+                                    fecha_str,
+                                    row['Ingreso/Gasto'],
+                                    row['Categoría'],
+                                    row['Cliente/Proveedor'] if pd.notna(row['Cliente/Proveedor']) else "",
+                                    row['Medio de Pago'],
+                                    float(row['Importe']),
+                                    row['Observaciones'] if pd.notna(row['Observaciones']) else ""
+                                ]],
+                                value_input_option='USER_ENTERED'
+                            )
                             cambios_realizados = True
                     except Exception as e:
                         st.error(f"❌ Error al actualizar: {e}")
                         break
             
-            # Detectar filas eliminadas (si el editor tiene menos filas que el original)
+            # Detectar filas eliminadas
             if len(edited_df) < len(df_filtrado):
                 try:
                     client = get_sheets_client()
@@ -359,7 +323,7 @@ def show(datos):
                             row = edited_df.iloc[idx]
                             for _, orig in df_filtrado.iterrows():
                                 if (pd.notna(orig['Fecha']) and hasattr(row['Fecha'], 'strftime') and 
-                                    orig['Fecha'].strftime('%Y-%m-%d') == row['Fecha'].strftime('%Y-%m-%d') and
+                                    orig['Fecha'].strftime('%d/%m/%Y') == row['Fecha'].strftime('%d/%m/%Y') and
                                     orig['Importe'] == row['Importe']):
                                     ids_restantes.append(orig['ID'])
                                     break
@@ -388,54 +352,42 @@ def show(datos):
             else:
                 st.info("ℹ️ No se detectaron cambios")
         
-        st.markdown("---")
-        
-        # --- LISTA DE MOVIMIENTOS CON BOTÓN DE ELIMINAR ---
-        st.subheader("🗑️ Eliminar movimientos")
-        st.caption("Hacé clic en el botón 🗑️ de la fila que quieras eliminar.")
-        
-        # Encabezados
-        h1, h2, h3, h4, h5, h6, h7, h8 = st.columns([1.2, 0.8, 1.5, 1.5, 1.2, 1, 2.5, 0.5])
-        with h1:
-            st.markdown("**Fecha**")
-        with h2:
-            st.markdown("**Tipo**")
-        with h3:
-            st.markdown("**Categoría**")
-        with h4:
-            st.markdown("**Cliente/Prov.**")
-        with h5:
-            st.markdown("**Medio Pago**")
-        with h6:
-            st.markdown("**Importe**")
-        with h7:
-            st.markdown("**Observaciones**")
-        with h8:
-            st.markdown("**Acción**")
+        st.caption("💡 **Para editar:** hacé doble clic en una celda, luego presioná '💾 Guardar cambios'.")
         
         st.markdown("---")
         
-        # Filas con botón eliminar
-        for idx, row in df_filtrado.iterrows():
-            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.2, 0.8, 1.5, 1.5, 1.2, 1, 2.5, 0.5])
+        # --- ELIMINAR MOVIMIENTO (VERSIÓN SIMPLE Y COMPACTA) ---
+        st.subheader("🗑️ Eliminar movimiento")
+        
+        col_del1, col_del2 = st.columns([4, 1])
+        
+        with col_del1:
+            # Crear opciones legibles para el selector
+            opciones_eliminar = {}
+            for _, row in df_filtrado.iterrows():
+                fecha_str = row['Fecha'].strftime('%d/%m/%Y') if pd.notna(row['Fecha']) else '?'
+                cliente_str = row['Cliente/Proveedor'] if pd.notna(row['Cliente/Proveedor']) else 'Sin cliente'
+                importe_str = f"${row['Importe']:,.2f}" if pd.notna(row['Importe']) else '$0'
+                obs_str = row['Observaciones'][:30] if pd.notna(row['Observaciones']) and row['Observaciones'] else ''
+                
+                etiqueta = f"{fecha_str} | {cliente_str} | {importe_str}"
+                if obs_str:
+                    etiqueta += f" | {obs_str}"
+                
+                opciones_eliminar[etiqueta] = row['ID']
             
-            with c1:
-                st.write(row['Fecha'].strftime('%d/%m/%Y') if pd.notna(row['Fecha']) else '')
-            with c2:
-                st.write(row['Ingreso/Gasto'] if pd.notna(row['Ingreso/Gasto']) else '')
-            with c3:
-                st.write(row['Categoría'] if pd.notna(row['Categoría']) else '')
-            with c4:
-                st.write(row['Cliente/Proveedor'] if pd.notna(row['Cliente/Proveedor']) else '')
-            with c5:
-                st.write(row['Medio de Pago'] if pd.notna(row['Medio de Pago']) else '')
-            with c6:
-                st.write(f"${row['Importe']:,.2f}" if pd.notna(row['Importe']) else '')
-            with c7:
-                obs = row['Observaciones'] if pd.notna(row['Observaciones']) else ''
-                st.write(obs[:50] + '...' if len(obs) > 50 else obs)
-            with c8:
-                if st.button("🗑️", key=f"del_{row['ID']}", help="Eliminar este movimiento"):
+            seleccion = st.selectbox(
+                "Seleccioná el movimiento a eliminar:",
+                list(opciones_eliminar.keys()),
+                index=None,
+                placeholder="Buscá o seleccioná un movimiento..."
+            )
+        
+        with col_del2:
+            st.markdown("<br>", unsafe_allow_html=True)  # Espacio para alinear
+            if st.button("🗑️ Eliminar", use_container_width=True, type="primary"):
+                if seleccion:
+                    id_eliminar = opciones_eliminar[seleccion]
                     try:
                         client = get_sheets_client()
                         if client is not None:
@@ -444,7 +396,7 @@ def show(datos):
                             
                             fila_idx = None
                             for i, fila in enumerate(todas_las_filas):
-                                if i > 0 and len(fila) > 0 and fila[0] == str(row['ID']):
+                                if i > 0 and len(fila) > 0 and fila[0] == str(id_eliminar):
                                     fila_idx = i + 1
                                     break
                             
@@ -458,10 +410,11 @@ def show(datos):
                                 st.error("❌ No se encontró el movimiento")
                     except Exception as e:
                         st.error(f"❌ Error al eliminar: {e}")
-            
-            st.markdown("---")
+                else:
+                    st.warning("⚠️ Seleccioná un movimiento primero")
         
         # --- BOTÓN PARA EXPORTAR CSV ---
+        st.markdown("---")
         csv = df_filtrado.drop(columns=['ID'], errors='ignore').to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Descargar CSV",
