@@ -17,6 +17,8 @@ def show(datos):
         st.session_state.tipo_actual = ""
     if 'editor_key' not in st.session_state:
         st.session_state.editor_key = 0
+    if 'recargar_datos' not in st.session_state:
+        st.session_state.recargar_datos = False
     
     # --- 1. FORMULARIO PARA AGREGAR MOVIMIENTO (SIEMPRE VISIBLE) ---
     st.subheader("➕ Nuevo Movimiento")
@@ -149,6 +151,7 @@ def show(datos):
                 st.success("✅ Movimiento guardado correctamente")
                 st.balloons()
                 clear_cache()
+                st.session_state.recargar_datos = True
                 st.session_state.editor_key += 1
                 st.rerun()
     
@@ -264,7 +267,13 @@ def show(datos):
             guardar = st.button("💾 Guardar cambios", use_container_width=True, type="primary")
         
         with col_btn2:
-            eliminar_ultima = st.button("🗑️ Eliminar última fila", use_container_width=True)
+            recargar = st.button("🔄 Recargar datos", use_container_width=True)
+        
+        if recargar:
+            clear_cache()
+            st.session_state.recargar_datos = True
+            st.session_state.editor_key += 1
+            st.rerun()
         
         # --- GUARDAR CAMBIOS (EDICIÓN) ---
         if guardar:
@@ -282,7 +291,6 @@ def show(datos):
                         val_original = original_row[col]
                         val_nuevo = row[col]
                         
-                        # Comparar valores
                         if pd.isna(val_original) and pd.isna(val_nuevo):
                             continue
                         if pd.isna(val_original) and not pd.isna(val_nuevo):
@@ -312,7 +320,6 @@ def show(datos):
                                 break
                         
                         if fila_idx:
-                            # Formatear fecha
                             if hasattr(row['Fecha'], 'strftime'):
                                 fecha_str = row['Fecha'].strftime('%Y-%m-%d')
                             else:
@@ -333,7 +340,7 @@ def show(datos):
                         st.error(f"❌ Error al actualizar: {e}")
                         break
             
-            # Detectar filas eliminadas (si el editor tiene menos filas que el original)
+            # Detectar filas eliminadas
             if len(edited_df) < len(df_filtrado):
                 try:
                     client = get_sheets_client()
@@ -341,7 +348,6 @@ def show(datos):
                         sheet = client.open_by_key(SHEET_ID).worksheet('Movimientos')
                         todas_las_filas = sheet.get_all_values()
                         
-                        # IDs de las filas que quedaron
                         ids_restantes = []
                         for idx in range(len(edited_df)):
                             row = edited_df.iloc[idx]
@@ -364,7 +370,6 @@ def show(datos):
                             sheet.delete_rows(fila_idx)
                         
                         if filas_a_eliminar:
-                            st.success(f"✅ Se eliminaron {len(filas_a_eliminar)} movimientos")
                             cambios_realizados = True
                 except Exception as e:
                     st.error(f"❌ Error al eliminar: {e}")
@@ -376,33 +381,6 @@ def show(datos):
                 st.rerun()
             else:
                 st.info("ℹ️ No se detectaron cambios")
-        
-        # --- ELIMINAR ÚLTIMA FILA ---
-        if eliminar_ultima:
-            if len(df_filtrado) > 0:
-                id_ultima = df_filtrado.iloc[-1]['ID']
-                try:
-                    client = get_sheets_client()
-                    if client is not None:
-                        sheet = client.open_by_key(SHEET_ID).worksheet('Movimientos')
-                        todas_las_filas = sheet.get_all_values()
-                        
-                        fila_idx = None
-                        for i, fila in enumerate(todas_las_filas):
-                            if i > 0 and len(fila) > 0 and fila[0] == str(id_ultima):
-                                fila_idx = i + 1
-                                break
-                        
-                        if fila_idx:
-                            sheet.delete_rows(fila_idx)
-                            st.success(f"✅ Movimiento eliminado correctamente")
-                            clear_cache()
-                            st.session_state.editor_key += 1
-                            st.rerun()
-                        else:
-                            st.error("❌ No se encontró el movimiento")
-                except Exception as e:
-                    st.error(f"❌ Error al eliminar: {e}")
         
         st.caption("💡 **Para editar:** hacé doble clic en una celda, luego presioná '💾 Guardar cambios'.")
         st.caption("💡 **Para eliminar:** usá el ícono 🗑️ al final de la fila en la tabla, luego presioná '💾 Guardar cambios'.")
